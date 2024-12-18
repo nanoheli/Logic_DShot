@@ -27,10 +27,13 @@ void DshotAnalyzerResults::GenerateBubbleText( U64 frame_index, Channel& channel
 	const char *error_str = frame.mFlags & DISPLAY_AS_ERROR_FLAG ? "!" : "";
 
 	// widest display
-	AddResultString(error_str, number_str, telem_str);
+	//AddResultString(error_str, number_str, telem_str);
 	// middle
-	AddResultString(error_str, number_str);
-	// shortest
+	//AddResultString(error_str, number_str);
+    if(frame.mFlags & (1<<6))
+        AddResultString( "TLM: " );
+	else
+        AddResultString( "CMD: " );
 	if (frame.mFlags & DISPLAY_AS_ERROR_FLAG)
 		AddResultString(error_str);
 	else

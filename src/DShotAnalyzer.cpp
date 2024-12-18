@@ -61,13 +61,20 @@ void DshotAnalyzer::WorkerThread()
 		int i;
         FrameV2 framev2;
         char* framev2Type = nullptr;
-        lastEdge = mSerial->GetSampleNumber();
         isTelem = false;
 
 
 		for( i = sizeof( data ) * 8 - 1; i >= 0; i-- )
         {
-            mSerial->AdvanceToNextEdge(); // rising edge of first bit
+            if( mSerial->GetBitState() == BIT_HIGH && mSettings->mDShotIsBidir )
+			{
+				mSerial->AdvanceToNextEdge();
+			}
+            if( mSerial->GetBitState() == BIT_LOW && !( mSettings->mDShotIsBidir ) )
+            {
+                mSerial->AdvanceToNextEdge();
+            }
+            //mSerial->AdvanceToNextEdge(); // rising edge of first bit
             uint64_t rising_sample = mSerial->GetSampleNumber();
 
             uint64_t distFromLastSample = rising_sample - lastEdge;
@@ -111,7 +118,7 @@ void DshotAnalyzer::WorkerThread()
                         stateCounter++;
 					}
                     uint16_t bit = states[ stateCounter ];
-                    dataTLM |= bit << i;
+                    dataTLM |= bit << j;
                     if(bit)
 						marker = AnalyzerResults::One;
 					else
@@ -120,6 +127,20 @@ void DshotAnalyzer::WorkerThread()
                     currentSample = telemStart + samplesPerBitTLMCalc / 2 + ( 20 - j ) * samplesPerBitTLMCalc;
                     //mSerial->AdvanceToAbsPosition( currentSample );
 				}
+                Frame frame;
+                frame.mData1 = dataTLM;
+                frame.mFlags = 1 << 6; // telem flag
+                frame.mStartingSampleInclusive = telemStart;
+                frame.mEndingSampleInclusive = currentSample;
+                mResults->AddFrame( frame );
+
+                framev2Type = "tlm";
+                //framev2.AddBoolean( "crc ok", crcok );
+                framev2.AddInteger( "data", dataTLM );
+                mResults->AddFrameV2( framev2, framev2Type, telemStart, currentSample );
+                mResults->CommitPacketAndStartNewPacket();
+                mResults->CommitResults();
+                lastEdge = currentSample;
                 break;
      
             }
@@ -197,15 +218,18 @@ void DshotAnalyzer::WorkerThread()
 		frame.mStartingSampleInclusive = starting_sample;
 		frame.mEndingSampleInclusive = mSerial->GetSampleNumber();
 
-		framev2Type = "fc";
+		framev2Type = "cmd";
+        framev2.AddBoolean( "crc ok", crcok );
         framev2.AddInteger( "data" , data );
+        framev2.AddInteger( "payload", data >> 5);
         framev2.AddInteger( "crc",  crc );
-        framev2.AddInteger( "crc ok", crcok );
 
 		mResults->AddFrame(frame);
         mResults->AddFrameV2( framev2, framev2Type, starting_sample, crcok ? mSerial->GetSampleNumber()  : starting_sample );
         mResults->CommitPacketAndStartNewPacket();
 		mResults->CommitResults();
+
+        lastEdge = mSerial->GetSampleNumber();
 
 		CheckIfThreadShouldExit();
 	}
