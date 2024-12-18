@@ -7,7 +7,7 @@
 #include <cstdio>
 
 DshotAnalyzer::DshotAnalyzer()
-:	Analyzer(),  
+:	Analyzer2(),  
 	mSettings( new DshotAnalyzerSettings() ),
 	mSimulationInitilized( false )
 {
@@ -20,6 +20,13 @@ DshotAnalyzer::~DshotAnalyzer()
 	KillThread();
 }
 
+void DshotAnalyzer::SetupResults()
+{
+    mResults.reset( new DshotAnalyzerResults( this, mSettings.get() ) );
+    SetAnalyzerResults( mResults.get() );
+    mResults->AddChannelBubblesWillAppearOn( mSettings->mInputChannel );
+}
+
 double DshotAnalyzer::proportionOfBit(U32 width)
 {
 	return static_cast<double>(width) / mSamplesPerBit;
@@ -27,10 +34,6 @@ double DshotAnalyzer::proportionOfBit(U32 width)
 
 void DshotAnalyzer::WorkerThread()
 {
-	mResults.reset( new DshotAnalyzerResults( this, mSettings.get() ) );
-	SetAnalyzerResults( mResults.get() );
-	mResults->AddChannelBubblesWillAppearOn( mSettings->mInputChannel );
-
 	mSampleRateHz = GetSampleRate();
 
 	mSerial = GetAnalyzerChannelData( mSettings->mInputChannel );
@@ -143,12 +146,12 @@ void DshotAnalyzer::WorkerThread()
                 if( set )
                 {
                     marker = AnalyzerResults::Start;
-                    framev2.AddBoolean( "tlm", true );
+                    framev2.AddBoolean( "request telemetry", true );
                 }
                 else
                 {
                     marker = AnalyzerResults::Stop;
-                    framev2.AddBoolean( "tlm", false );
+                    framev2.AddBoolean( "request telemetry", false );
                 }
 					
 			} else { // channel bits or crc
@@ -181,7 +184,7 @@ void DshotAnalyzer::WorkerThread()
 		}
 		chan >>= 5;
 
-		mSerial->Advance(mSamplesPerBit - width); // end of low pulse
+		//mSerial->Advance(mSamplesPerBit - width); // end of low pulse
 
 		if (!crcok)
 			mResults->AddMarker(mSerial->GetSampleNumber(), AnalyzerResults::ErrorX, mSettings->mInputChannel);
@@ -189,12 +192,15 @@ void DshotAnalyzer::WorkerThread()
 		//we have a byte to save. 
 		Frame frame;
 		frame.mData1 = chan;
+        frame.mData2 = data;
 		frame.mFlags = (crcok ? 0 : DISPLAY_AS_ERROR_FLAG) | ((data & 0x10) > 0); // error flag | telem request
 		frame.mStartingSampleInclusive = starting_sample;
 		frame.mEndingSampleInclusive = mSerial->GetSampleNumber();
 
 		framev2Type = "fc";
         framev2.AddInteger( "data" , data );
+        framev2.AddInteger( "crc",  crc );
+        framev2.AddInteger( "crc ok", crcok );
 
 		mResults->AddFrame(frame);
         mResults->AddFrameV2( framev2, framev2Type, starting_sample, crcok ? mSerial->GetSampleNumber()  : starting_sample );
@@ -202,7 +208,6 @@ void DshotAnalyzer::WorkerThread()
 		mResults->CommitResults();
 
 		CheckIfThreadShouldExit();
-		ReportProgress(frame.mEndingSampleInclusive);
 	}
 }
 
